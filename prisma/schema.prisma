@@ -1,0 +1,97 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  shifts      Shift[]
+  students    Student[]
+  yearPrices  SchoolYearPrice[]
+
+  @@map("users")
+}
+
+// Turno: manhã, tarde ou noite (gerenciado pelo usuário)
+model Shift {
+  id        String  @id @default(uuid())
+  userId    String  @map("user_id")
+  name      String  // "Manhã", "Tarde", "Noite"
+  startTime String  @map("start_time") // "07:00"
+  endTime   String  @map("end_time")   // "12:00"
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  students Student[]
+
+  @@map("shifts")
+}
+
+// Tabela de preços por ano escolar (1º ao 9º ano)
+model SchoolYearPrice {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  schoolYear  Int      @map("school_year") // 1 a 9
+  monthlyPrice Decimal @map("monthly_price") @db.Decimal(10, 2)
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  students Student[]
+
+  @@unique([userId, schoolYear]) // um preço por ano por usuário
+  @@map("school_year_prices")
+}
+
+model Student {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  shiftId     String   @map("shift_id")
+  priceId     String?  @map("price_id") // referência ao preço do ano escolar
+  name        String
+  schoolYear  Int      @map("school_year") // 1 a 9
+  schedule    String   // "Seg, Qua, Sex 08:00-09:30"
+  customPrice Decimal? @map("custom_price") @db.Decimal(10, 2) // sobrescreve o preço da tabela
+  active      Boolean  @default(true)
+  enrolledAt  DateTime @default(now()) @map("enrolled_at")
+
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shift    Shift            @relation(fields: [shiftId], references: [id])
+  price    SchoolYearPrice? @relation(fields: [priceId], references: [id])
+  payments Payment[]
+
+  @@map("students")
+}
+
+model Payment {
+  id        String      @id @default(uuid())
+  studentId String      @map("student_id")
+  month     Int         // 1-12
+  year      Int
+  amount    Decimal     @db.Decimal(10, 2)
+  status    PaymentStatus @default(PENDING)
+  paidAt    DateTime?   @map("paid_at")
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, month, year]) // evita duplicata de mensalidade
+  @@map("payments")
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  OVERDUE
+}
